@@ -135,8 +135,8 @@ def find_ts_gaps(timestamps, time_gap):
 
         # If the difference is greater than or equal to the time gap, record the gap
         if diff >= time_gap:
-            gap_start = prev_ts + timedelta(days=1)
-            gap_end = current_ts - timedelta(days=1)
+            gap_start = prev_ts + timedelta(hours=1)
+            gap_end = current_ts - timedelta(hours=1)
             ts_without_data.append((gap_start, gap_end))
 
     return ts_without_data
