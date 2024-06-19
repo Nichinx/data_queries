@@ -19,17 +19,13 @@ db_config = {
 # Function to prompt user for datetime input and handle errors
 def input_datetime(prompt):
     while True:
-        dt_str = input(prompt)
         try:
+            dt_str = input(prompt)
             dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
             return dt
         except ValueError:
-            try:
-                dt = datetime.strptime(dt_str, "%Y-%m-%d")
-                return dt
-            except ValueError:
-                print("Invalid datetime format. Please use YYYY-MM-DD HH:MM:SS or YYYY-MM-DD.")
-                # Continue the loop to prompt for input again
+            print("Invalid datetime format. Please use YYYY-MM-DD HH:MM:SS.")
+            # Continue the loop to prompt for input again
 
 # Function to prompt user for logger name and validate its existence
 def input_logger_name(prompt):
