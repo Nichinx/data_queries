@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
-# Function definitions
+
 def outlier_filter(df):
     dff = df.copy()
     dfmean = dff[['x','y','z']].rolling(min_periods=1, window=48, center=False).mean()
@@ -71,45 +71,36 @@ def resample_df(df):
 
 def apply_filters(dfl, orthof=True, rangef=True, outlierf=True):
     if dfl.empty:
-        return dfl  # Return empty DataFrame if input is empty
+        return dfl
 
-    # Apply range filter if enabled
     if rangef:
         dfl = range_filter_accel(dfl)
         if dfl.empty:
             return dfl
 
-    # Apply orthogonal filter if enabled
     if orthof:
         dfl = orthogonal_filter(dfl)
         if dfl.empty:
             return dfl
 
-    # Apply outlier filter if enabled
     if outlierf:
         dfl = dfl.groupby('node_id', group_keys=False).apply(resample_df)
-        # dfl = dfl.reset_index()
         dfl = dfl.set_index('ts').groupby('node_id', group_keys=False).apply(outlier_filter)
         if dfl.empty:
             return dfl
 
-    # Reset index to ensure 'node_id' remains as a column
     return dfl.reset_index()[['ts', 'node_id', 'x', 'y', 'z', 'batt']]
 
-
 def main():
-    # Prompt for user inputs
     logger_name = input("Enter the logger name: ")
     timedelta_months = int(input("Enter the time delta in months: "))
     node_id = int(input("Enter the node_id: "))
 
-    # Calculate the start date based on the time delta
     end_date = datetime.now() + timedelta(days=1)
     start_date = end_date - timedelta(days=timedelta_months * 30)
     start_date_str = start_date.strftime('%Y-%m-%d')
     end_date_str = end_date.strftime('%Y-%m-%d')
 
-    # Connect to the database
     dyna_db = mysql.connector.connect(
         host="192.168.150.112",
         database="analysis_db",
@@ -117,36 +108,27 @@ def main():
         password="NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg",
     )
 
-    # Query data
     query = f"SELECT * FROM analysis_db.tilt_{logger_name} WHERE ts BETWEEN '{start_date_str}' AND '{end_date_str}' ORDER BY ts"
     df = pd.read_sql(query, dyna_db)
     df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt', 'is_live']
     print("Number of rows fetched from database:", len(df))
     
-    # Handle case where logger_name is a 4-letter string without type_num
     if len(logger_name) == 4:
-        # Assume type_num = 1 for this case
         df['type_num'] = 1
 
-    # Filter by node_id
     df_filtered = df[df['node_id'] == node_id]
-
-    # Get unique type_num values from the dataframe
     type_nums = df['type_num'].unique()
 
-    # Create subplots
     fig, axs = plt.subplots(3, 4, figsize=(12, 12), sharex='col')
     execution_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     fig.text(0.5, 0.945, f'Execution Time: {execution_time}', ha='center', fontsize=10)
     plt.suptitle(f'{logger_name} : node ID {node_id}', fontsize=16)
 
-    # Plotting loop
     for i, df_group in enumerate([df[df['node_id'] == node_id - 1], df_filtered, df[df['node_id'] == node_id + 1]]):
         row = i
         for j, type_num in enumerate(type_nums):
             
             df_type = df_group[df_group['type_num'] == type_num].copy()
-            # df_type = df_type.groupby(pd.Grouper(key='ts', freq='4H', group_keys=True)).apply(apply_filters)
             df_type = df_type.groupby('node_id', group_keys=True).apply(apply_filters)
             
             if not df_type.empty:
@@ -159,30 +141,28 @@ def main():
                     axs[row, k].legend()
             else:
                 for k in range(4):
-                    axs[row, k].text(0.5, 0.5, 'No data', fontsize=10, ha='center', va='center')                
+                    axs[row, k].text(0.5, 0.5, 'No data', fontsize=10, ha='center', va='center', transform=axs[row, k].transAxes)  # Centered 'No data'                
 
-        # Add node_id label for each row
         desired_node_id = node_id
-        axs[row, 0].text(-0.2, 0.5, f'node_id {desired_node_id - 1 + row}', fontsize=12, ha='center', va='center', rotation=90, transform=axs[row, 0].transAxes)
+        if row == 1:
+            axs[row, 0].text(-0.2, 0.5, f'node_id {desired_node_id - 1 + row}', fontsize=12, fontweight='bold', ha='center', va='center', rotation=90, transform=axs[row, 0].transAxes)
+        else:
+            axs[row, 0].text(-0.2, 0.5, f'node_id {desired_node_id - 1 + row}', fontsize=12, ha='center', va='center', rotation=90, transform=axs[row, 0].transAxes)
 
-    # Set x-axis label for the entire bottom row
     fig.text(0.5, 0.01, 'timestamp', ha='center', fontsize=12)
     
     for top in range(4):
         axs[0, top].set_title(['xval', 'yval', 'zval', 'batt'][top], fontsize=10)
 
-    # Adjust x-axis tick labels for the bottom row
     for col in range(4):
         axs[2, col].tick_params(axis='x', rotation=45)
 
-    # Adjust y-axis limits for the fourth column in each row
     for row in range(3):
         axs[row, 3].set_ylim(axs[row, 3].get_ylim()[0] - 0.5, axs[row, 3].get_ylim()[1] + 0.5)
 
-
-    # Formatting
-    plt.tight_layout()
     plt.show()
+    plt.get_current_fig_manager().window.showMaximized()
+    plt.tight_layout()
     dyna_db.close()
 
 if __name__ == "__main__":
