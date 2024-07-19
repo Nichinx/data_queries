@@ -129,12 +129,20 @@ def apply_filters(dfl, orthof=True, rangef=True, outlierf=True):
         if dfl.empty:
             return dfl
 
+    # if outlierf:
+    #     dfl = dfl.groupby('node_id').apply(resample_df)
+    #     dfl = dfl.set_index('ts').groupby('node_id').apply(outlier_filter)
+    #     if dfl.empty:
+    #         return dfl
     if outlierf:
-        dfl = dfl.groupby('node_id', group_keys=False).apply(resample_df)
-        dfl = dfl.set_index('ts').groupby('node_id', group_keys=False).apply(outlier_filter)
+        dfl = dfl.groupby(['node_id'])
+        dfl = dfl.apply(resample_df)
+        dfl = dfl.set_index('ts').groupby('node_id').apply(outlier_filter)
+        dfl = dfl.reset_index(level = ['ts'])
         if dfl.empty:
-            return dfl
+            return dfl[['ts','tsm_name','node_id','x','y','z']]
 
+    dfl = dfl.reset_index(drop=True) 
     return dfl.reset_index()[['ts', 'node_id', 'x', 'y', 'z', 'batt']]
 
 # def main():
@@ -926,6 +934,7 @@ def main_v7():  # adjust no data print id theres atleast one type num plot
 
             end_date = datetime.now() + timedelta(days=1)
             start_date = end_date - timedelta(days=timedelta_months * 30)
+            # start_date = end_date - timedelta(days=timedelta_months)
             start_date_str = start_date.strftime('%Y-%m-%d')
             end_date_str = end_date.strftime('%Y-%m-%d')
 
@@ -941,7 +950,11 @@ def main_v7():  # adjust no data print id theres atleast one type num plot
             if len(logger_name) == 4:
                 df['type_num'] = 1
 
-            df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt', 'is_live']
+            #df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt', 'is_live']
+            if len(df.columns)==10:
+                df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt', 'is_live']
+            else:
+                df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt']                
             print("Number of rows fetched from database:", len(df))
 
             type_nums = df['type_num'].unique()
