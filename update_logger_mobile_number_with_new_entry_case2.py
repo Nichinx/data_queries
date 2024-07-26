@@ -118,8 +118,8 @@ def update_logger_mobile_number(connection):
             print(f"site_id: {result[1]}")
             print(f"logger_name: {result[2]}")
             print(f"mobile_id: {result[3]}")
-            print(f"sim_num: {result[4]}")
-            print(f"gsm_id: {result[5]}")
+            print(f"sim_num: {result[6]}")
+            print(f"gsm_id: {result[7]}")
             print("- - - - - - - - - - -")
 
             # Prompt for new SIM number
@@ -144,7 +144,7 @@ def update_logger_mobile_number(connection):
             SET sim_num = %s, gsm_id = %s
             WHERE mobile_id = %s
             """
-            cursor.execute(update_query, (new_sim_num, gsm_id if case == 1 else None, result[3]))
+            cursor.execute(update_query, (new_sim_num, gsm_id, result[3]))
             print(f"SIM number successfully updated for {logger_name}.")
 
     elif case == 1:
@@ -156,8 +156,8 @@ def update_logger_mobile_number(connection):
             print(f"site_id: {result[1]}")
             print(f"logger_name: {result[2]}")
             print(f"mobile_id: {result[3]}")
-            print(f"sim_num: {result[4]}")
-            print(f"gsm_id: {result[5]}")
+            print(f"sim_num: {result[6]}")
+            print(f"gsm_id: {result[7]}")
             print("- - - - - - - - - - -")
             
             # Prompt for new SIM number
@@ -193,8 +193,8 @@ def update_logger_mobile_number(connection):
             print(f"site_id: {result[1]}")
             print(f"logger_name: {result[2]}")
             print(f"mobile_id: {result[3]}")
-            print(f"sim_num: {result[4]}")
-            print(f"gsm_id: {result[5]}")
+            print(f"sim_num: {result[6]}")
+            print(f"gsm_id: {result[7]}")
             print("- - - - - - - - - - -")
             
             # Update SIM number and GSM ID to NULL

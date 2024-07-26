@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Jul 26 18:31:55 2024
+Created on Fri Jul 26 20:43:28 2024
 
 @author: nichm
 """
@@ -72,17 +72,17 @@ def update_logger_mobile_number(connection):
     print("3. Remove logger GSM: ARQ mode to router or decommission")
     print("4. Delete logger/mobile entry")
     print("")
-    case = int(input("Enter the case number (1, 2, 3, or 4): "))
+    case = int(input("Enter the case number (1, 2, or 3): "))
 
     if case not in [1, 2, 3, 4]:
-        print("Invalid case number. Only cases 1, 2, 3, and 4 are supported.")
+        print("Invalid case number. Only cases 1, 2, 3 and 4 are supported.")
         return
 
     # Query to get current details
     query = """
     SELECT l.logger_id, l.site_id, l.logger_name, lm.mobile_id, lm.date_activated, lm.date_deactivated, lm.sim_num, lm.gsm_id
     FROM test_schema.loggers AS l
-    LEFT JOIN test_schema.logger_mobile AS lm
+    INNER JOIN test_schema.logger_mobile AS lm
     ON l.logger_id = lm.logger_id
     WHERE l.logger_name = %s
     """
@@ -124,8 +124,8 @@ def update_logger_mobile_number(connection):
             print(f"site_id: {result[1]}")
             print(f"logger_name: {result[2]}")
             print(f"mobile_id: {result[3]}")
-            print(f"sim_num: {result[4]}")
-            print(f"gsm_id: {result[5]}")
+            print(f"sim_num: {result[6]}")
+            print(f"gsm_id: {result[7]}")
             print("- - - - - - - - - - -")
 
             # Prompt for new SIM number
@@ -150,7 +150,7 @@ def update_logger_mobile_number(connection):
             SET sim_num = %s, gsm_id = %s
             WHERE mobile_id = %s
             """
-            cursor.execute(update_query, (new_sim_num, gsm_id if case == 1 else None, result[3]))
+            cursor.execute(update_query, (new_sim_num, gsm_id, result[3]))
             print(f"SIM number successfully updated for {logger_name}.")
 
     elif case == 1:
@@ -162,8 +162,8 @@ def update_logger_mobile_number(connection):
             print(f"site_id: {result[1]}")
             print(f"logger_name: {result[2]}")
             print(f"mobile_id: {result[3]}")
-            print(f"sim_num: {result[4]}")
-            print(f"gsm_id: {result[5]}")
+            print(f"sim_num: {result[6]}")
+            print(f"gsm_id: {result[7]}")
             print("- - - - - - - - - - -")
             
             # Prompt for new SIM number
@@ -199,8 +199,8 @@ def update_logger_mobile_number(connection):
             print(f"site_id: {result[1]}")
             print(f"logger_name: {result[2]}")
             print(f"mobile_id: {result[3]}")
-            print(f"sim_num: {result[4]}")
-            print(f"gsm_id: {result[5]}")
+            print(f"sim_num: {result[6]}")
+            print(f"gsm_id: {result[7]}")
             print("- - - - - - - - - - -")
             
             # Update SIM number and GSM ID to NULL
@@ -212,6 +212,9 @@ def update_logger_mobile_number(connection):
             cursor.execute(update_query, (result[3],))
             print(f"SIM num deleted for {logger_name}.")
 
+        else:
+            print("Error: No existing GSM entry found for the selected logger.")
+            
     elif case == 4:
         if result:
             print("- - - - - - - - - - -")
@@ -242,13 +245,11 @@ def update_logger_mobile_number(connection):
             WHERE mobile_id = %s
             """
             cursor.execute(delete_mobile_numbers_query, (result[3],))
-
-            # Commit changes
-            connection.commit()
             print(f"Logger and corresponding mobile entry successfully deleted for {logger_name}.")
         else:
             print("Error: No existing GSM entry found for the selected logger.")
 
+    connection.commit()
     cursor.close()
 
 def main():
@@ -274,4 +275,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
