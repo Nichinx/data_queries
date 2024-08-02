@@ -36,12 +36,11 @@ def update_logger_mobile_number(connection):
     print("1. Logger has existing GSM -> update sim_num and gsm_id")
     print("2. Logger with no GSM before: router to ARQ mode")
     print("3. Remove logger GSM: ARQ mode to router or decommission")
-    print("4. Delete logger/mobile entry")
     print("")
-    case = int(input("Enter the case number (1, 2, 3, or 4): "))
+    case = int(input("Enter the case number (1, 2, or 3): "))
 
-    if case not in [1, 2, 3, 4]:
-        print("Invalid case number. Only cases 1, 2, 3, and 4 are supported.")
+    if case not in [1, 2, 3]:
+        print("Invalid case number. Only cases 1, 2, and 3 are supported.")
         return
 
     query = """
@@ -54,7 +53,7 @@ def update_logger_mobile_number(connection):
     cursor.execute(query, (logger_name,))
     result = cursor.fetchone()
 
-    if case in [1, 3, 4] and not result:
+    if case in [1, 3] and not result:
         print("Error: No existing GSM entry found for the selected logger.")
         return
 
@@ -71,17 +70,34 @@ def update_logger_mobile_number(connection):
             print("5 - Smart1")
             print("7 - Smart2")
             gsm_id = int(input("Enter the GSM ID: "))
+            print(" ")
 
             cursor.execute("SELECT logger_id FROM test_schema.loggers WHERE logger_name = %s", (logger_name,))
             logger_id = cursor.fetchone()[0]
 
+            # Get the last mobile_id from the logger_mobile table
+            cursor.execute("SELECT COALESCE(MAX(mobile_id), 0) FROM test_schema.logger_mobile")
+            last_mobile_id = cursor.fetchone()[0]
+            new_mobile_id = last_mobile_id + 1
+
             insert_query = """
-            INSERT INTO test_schema.logger_mobile (logger_id, sim_num, gsm_id, date_activated)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO test_schema.logger_mobile (mobile_id, logger_id, sim_num, gsm_id, date_activated)
+            VALUES (%s, %s, %s, %s, %s)
             """
-            cursor.execute(insert_query, (logger_id, new_sim_num, gsm_id, datetime.now().strftime('%Y-%m-%d')))
+            cursor.execute(insert_query, (new_mobile_id, logger_id, new_sim_num, gsm_id, datetime.now().strftime('%Y-%m-%d')))
             connection.commit()
             print("New entry created successfully in logger_mobile.")
+            
+            cursor.execute(query, (logger_name,))
+            result = cursor.fetchone()
+            print("Updated details:")
+            print(f"logger_id: {result[0]}")
+            print(f"site_id: {result[1]}")
+            print(f"logger_name: {result[2]}")
+            print(f"mobile_id: {result[3]}")
+            print(f"sim_num: {result[6]}")
+            print(f"gsm_id: {result[7]}")
+            print("- - - - - - - - - - -")
 
         else:
             print("Logger already has a GSM entry. Please use case 1 to update it.")
@@ -95,7 +111,7 @@ def update_logger_mobile_number(connection):
         print(f"mobile_id: {result[3]}")
         print(f"sim_num: {result[6]}")
         print(f"gsm_id: {result[7]}")
-        print("- - - - - - - - - - -")
+        print(" ")
         
         new_sim_num = input("Enter the new SIM number: ")
         if len(new_sim_num) > 12:
@@ -108,6 +124,7 @@ def update_logger_mobile_number(connection):
         print("5 - Smart1")
         print("7 - Smart2")
         gsm_id = int(input("Enter the GSM ID: "))
+        print(" ")
 
         update_query = """
         UPDATE test_schema.logger_mobile
@@ -117,6 +134,17 @@ def update_logger_mobile_number(connection):
         cursor.execute(update_query, (new_sim_num, gsm_id, result[3]))
         connection.commit()
         print(f"SIM number and GSM ID successfully updated for {logger_name}.")
+        
+        cursor.execute(query, (logger_name,))
+        result = cursor.fetchone()
+        print("Updated details:")
+        print(f"logger_id: {result[0]}")
+        print(f"site_id: {result[1]}")
+        print(f"logger_name: {result[2]}")
+        print(f"mobile_id: {result[3]}")
+        print(f"sim_num: {result[6]}")
+        print(f"gsm_id: {result[7]}")
+        print("- - - - - - - - - - -")
 
     elif case == 3:
         print("- - - - - - - - - - -")
@@ -127,7 +155,7 @@ def update_logger_mobile_number(connection):
         print(f"mobile_id: {result[3]}")
         print(f"sim_num: {result[6]}")
         print(f"gsm_id: {result[7]}")
-        print("- - - - - - - - - - -")
+        print(" ")
         
         update_query = """
         UPDATE test_schema.logger_mobile
@@ -137,10 +165,10 @@ def update_logger_mobile_number(connection):
         cursor.execute(update_query, (result[3],))
         connection.commit()
         print(f"SIM number and GSM ID deleted for {logger_name}.")
-
-    elif case == 4:
-        print("- - - - - - - - - - -")
-        print("Current details:")
+        
+        cursor.execute(query, (logger_name,))
+        result = cursor.fetchone()
+        print("Updated details:")
         print(f"logger_id: {result[0]}")
         print(f"site_id: {result[1]}")
         print(f"logger_name: {result[2]}")
@@ -148,25 +176,19 @@ def update_logger_mobile_number(connection):
         print(f"sim_num: {result[6]}")
         print(f"gsm_id: {result[7]}")
         print("- - - - - - - - - - -")
-        
-        delete_query = """
-        DELETE FROM test_schema.logger_mobile
-        WHERE mobile_id = %s
-        """
-        cursor.execute(delete_query, (result[3],))
-        connection.commit()
-        print(f"Logger and corresponding mobile entry successfully deleted for {logger_name}.")
 
     cursor.close()
 
 def main():
     try:
+        #LOCAL
         connection = mysql.connector.connect(
             host="localhost",
             database="new_schema",
             user="root",
             password="admin123"
         )
+        
         if connection.is_connected():
             print("Connected to the database.")
             update_logger_mobile_number(connection)
