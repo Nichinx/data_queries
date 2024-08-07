@@ -16,10 +16,9 @@ def get_valid_logger_name(connection, cursor):
     while True:
         logger_name = input("Enter the logger name: ")
 
-        # Query to check if logger exists
         query = """
         SELECT 1
-        FROM test_schema.loggers
+        FROM commons_db.loggers
         WHERE logger_name = %s
         """
         cursor.execute(query, (logger_name,))
@@ -29,7 +28,7 @@ def get_valid_logger_name(connection, cursor):
             return logger_name
         
         else:
-            cursor.execute("SELECT logger_name, site_id FROM test_schema.loggers WHERE logger_name LIKE %s", (logger_name[:3] + '%',))
+            cursor.execute("SELECT logger_name, site_id FROM commons_db.loggers WHERE logger_name LIKE %s", (logger_name[:3] + '%',))
             matches = cursor.fetchall()
 
             if matches:
@@ -46,7 +45,6 @@ def get_valid_logger_name(connection, cursor):
 
                 # site_id = site_ids.pop()
                 create_entry = input("Do you want to create a new entry for this logger? (1 for Yes, 0 for No): ").strip()
-                # print(" ")
                 if create_entry == '1':
                     print("ay wow bago")
                     print(" ")
@@ -134,7 +132,7 @@ def create_rain_table(table_name, cursor):
 def insert_into_rainfall_gauges(cursor, logger_name, date_activated, latitude, longitude):
     resolution = input("Enter the resolution for the rain gauge: ")
     insert_rain_gauge_query = """
-    INSERT INTO test_schema.rainfall_gauges (gauge_name, data_source, date_activated, latitude, longitude, resolution) 
+    INSERT INTO analysis_db.rainfall_gauges (gauge_name, data_source, date_activated, latitude, longitude, resolution) 
     VALUES (%s, 'senslope', %s, %s, %s, %s)
     """
     cursor.execute(insert_rain_gauge_query, (logger_name, date_activated, latitude, longitude, resolution))
@@ -185,13 +183,12 @@ def create_gnss_table(table_name, cursor):
     """.format(table_name)
     create_table_if_not_exists(table_name, cursor, query)
 
-
 def validate_int(value_str, valid_values):
     return value_str.isdigit() and int(value_str) in valid_values
 
-def create_new_logger_entry(connection, cursor, logger_name, schema="test_schema"):
+def create_new_logger_entry(connection, cursor, logger_name, schema="analysis_db"):
     while True:      
-        cursor.execute("SELECT logger_name, site_id FROM test_schema.loggers WHERE logger_name LIKE %s", (logger_name[:3] + '%',))
+        cursor.execute("SELECT logger_name, site_id FROM commons_db.loggers WHERE logger_name LIKE %s", (logger_name[:3] + '%',))
         matches = cursor.fetchall()
         
         site_ids = set()
@@ -265,7 +262,7 @@ def create_new_logger_entry(connection, cursor, logger_name, schema="test_schema
 
         model_query = """
         SELECT model_id
-        FROM test_schema.logger_models
+        FROM commons_db.logger_models
         WHERE has_tilt = %s AND has_rain = %s AND has_piezo = %s AND has_soms = %s AND has_gnss = %s AND has_stilt = %s AND logger_type = %s
         ORDER BY version DESC
         LIMIT 1
@@ -279,12 +276,12 @@ def create_new_logger_entry(connection, cursor, logger_name, schema="test_schema
         model_id = model_result[0]
 
         insert_query = """
-        INSERT INTO test_schema.loggers (logger_name, site_id, date_activated, date_deactivated, latitude, longitude, model_id)
+        INSERT INTO commons_db.loggers (logger_name, site_id, date_activated, date_deactivated, latitude, longitude, model_id)
         VALUES (%s, %s, %s, NULL, %s, %s, %s)
         """
         cursor.execute(insert_query, (logger_name, site_id, date_activated, latitude, longitude, model_id))        
                 
-        cursor.execute("SELECT logger_id FROM test_schema.loggers WHERE logger_name = %s", (logger_name,))
+        cursor.execute("SELECT logger_id FROM commons_db.loggers WHERE logger_name = %s", (logger_name,))
         logger_id = cursor.fetchone()[0]
 
         if logger_type in ['2']:
@@ -296,19 +293,19 @@ def create_new_logger_entry(connection, cursor, logger_name, schema="test_schema
                 return
 
             gsm_id = 7      
-            cursor.execute("SELECT 1 FROM test_schema.logger_mobile WHERE sim_num = %s", (sim_num,))
+            cursor.execute("SELECT 1 FROM comms_db.logger_mobile WHERE sim_num = %s", (sim_num,))
             if cursor.fetchone():
                 print("Error: SIM number already exists in the logger_mobile table.")
                 connection.rollback()
                 return
     
             # Get the last mobile_id from the logger_mobile table
-            cursor.execute("SELECT COALESCE(MAX(mobile_id), 0) FROM test_schema.logger_mobile")
+            cursor.execute("SELECT COALESCE(MAX(mobile_id), 0) FROM comms_db.logger_mobile")
             last_mobile_id = cursor.fetchone()[0]
             new_mobile_id = last_mobile_id + 1
     
             insert_mobile_query = """
-            INSERT INTO test_schema.logger_mobile (mobile_id, logger_id, sim_num, date_activated, gsm_id)
+            INSERT INTO comms_db.logger_mobile (mobile_id, logger_id, sim_num, date_activated, gsm_id)
             VALUES (%s, %s, %s, %s, %s)
             """
             cursor.execute(insert_mobile_query, (new_mobile_id, logger_id, sim_num, date_activated, gsm_id))
@@ -347,8 +344,8 @@ def update_logger_mobile_number(connection):
     
     query = """
     SELECT l.logger_id, l.site_id, l.logger_name, lm.mobile_id, lm.date_activated, lm.date_deactivated, lm.sim_num, lm.gsm_id
-    FROM test_schema.loggers AS l
-    INNER JOIN test_schema.logger_mobile AS lm
+    FROM commons_db.loggers AS l
+    INNER JOIN comms_db.logger_mobile AS lm
     ON l.logger_id = lm.logger_id
     WHERE l.logger_name = %s
     """
@@ -396,14 +393,14 @@ def update_logger_mobile_number(connection):
             gsm_id = 7
 
             # Check for duplicate SIM number
-            sim_check_query = "SELECT 1 FROM test_schema.logger_mobile WHERE sim_num = %s"
+            sim_check_query = "SELECT 1 FROM comms_db.logger_mobile WHERE sim_num = %s"
             cursor.execute(sim_check_query, (sim_num,))
             if cursor.fetchone():
                 print("Error: SIM number already exists in the logger_mobile table.")
                 return
 
             update_query = """
-            UPDATE test_schema.logger_mobile
+            UPDATE comms_db.logger_mobile
             SET sim_num = %s, gsm_id = %s
             WHERE mobile_id = %s
             """
@@ -428,18 +425,18 @@ def update_logger_mobile_number(connection):
                     return
                 gsm_id = 7  # Hardcoded GSM ID value
                 
-                cursor.execute("SELECT logger_id FROM test_schema.loggers WHERE logger_name = %s LIMIT 1", (logger_name,))
+                cursor.execute("SELECT logger_id FROM commons_db.loggers WHERE logger_name = %s LIMIT 1", (logger_name,))
                 logger_id = cursor.fetchone()[0]
                 
-                cursor.execute("SELECT 1 FROM test_schema.logger_mobile WHERE sim_num = %s", (sim_num,))
+                cursor.execute("SELECT 1 FROM comms_db.logger_mobile WHERE sim_num = %s", (sim_num,))
                 if cursor.fetchone():
                     print("Error: SIM number already exists in the logger_mobile table.")
                     return
-                cursor.execute("SELECT COALESCE(MAX(mobile_id), 0) FROM test_schema.logger_mobile")
+                cursor.execute("SELECT COALESCE(MAX(mobile_id), 0) FROM comms_db.logger_mobile")
                 last_mobile_id = cursor.fetchone()[0]
                 new_mobile_id = last_mobile_id + 1
                 insert_mobile_query = """
-                INSERT INTO test_schema.logger_mobile (mobile_id, logger_id, sim_num, date_activated, gsm_id)
+                INSERT INTO comms_db.logger_mobile (mobile_id, logger_id, sim_num, date_activated, gsm_id)
                 VALUES (%s, %s, %s, %s, %s)
                 """
                 cursor.execute(insert_mobile_query, (new_mobile_id, logger_id, sim_num, datetime.now().strftime('%Y-%m-%d'), gsm_id))
@@ -498,7 +495,7 @@ def update_logger_mobile_number(connection):
                             print("Error: Invalid date format.")
                             return
                         update_query = """
-                        UPDATE test_schema.logger_mobile
+                        UPDATE comms_db.logger_mobile
                         SET date_deactivated = %s, sim_num = NULL, gsm_id = NULL
                         WHERE mobile_id = %s
                         """
@@ -517,7 +514,7 @@ def update_logger_mobile_number(connection):
                         
                     elif deactivate_logger == '0':
                         update_query = """
-                        UPDATE test_schema.logger_mobile
+                        UPDATE comms_db.logger_mobile
                         SET sim_num = NULL, gsm_id = NULL
                         WHERE mobile_id = %s
                         """
@@ -565,7 +562,7 @@ def main():
         #LOCAL
         connection = mysql.connector.connect(
             host="localhost",
-            database="test_schema",
+            database="analysis_db",
             user="root",
             password="admin123"
         )
