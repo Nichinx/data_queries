@@ -2,8 +2,9 @@
 """
 Created on Fri Aug  2 18:30:02 2024
 
-@author: nichm powered by chatgpt
+@author: nichm
 """
+
 
 import mysql.connector
 from mysql.connector import Error
@@ -64,7 +65,6 @@ def create_table_if_not_exists(table_name, cursor, create_table_query):
             print(f"Table {table_name} created successfully.")
     # finally:
     #     cursor.close()
-
 
 def create_tilt_table(table_name, cursor):
     query = """
@@ -272,7 +272,6 @@ def create_new_logger_entry(connection, cursor, logger_name, schema="analysis_db
         if not model_result:
             print("Error: No matching model found.")
             continue
-
         model_id = model_result[0]
 
         insert_query = """
@@ -283,7 +282,6 @@ def create_new_logger_entry(connection, cursor, logger_name, schema="analysis_db
                 
         cursor.execute("SELECT logger_id FROM commons_db.loggers WHERE logger_name = %s", (logger_name,))
         logger_id = cursor.fetchone()[0]
-
         if logger_type in ['2']:
             # Check for duplicate SIM number
             sim_num = input("Enter the SIM number: ")
@@ -338,7 +336,6 @@ def update_logger_mobile_number(connection):
     cursor = connection.cursor()
 
     logger_name = get_valid_logger_name(connection, cursor)
-    
     if not logger_name:
         return
     
@@ -561,10 +558,10 @@ def main():
     try:
         #LOCAL
         connection = mysql.connector.connect(
-            host="localhost",
+            host="192.168.150.112",
             database="analysis_db",
-            user="root",
-            password="admin123"
+            user="pysys_local",
+            password="NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg"
         )
         
         if connection.is_connected():
@@ -578,6 +575,7 @@ def main():
         if connection.is_connected():
             connection.close()
             print("MySQL connection is closed.")
+
 
 if __name__ == "__main__":
     main()
