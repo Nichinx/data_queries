@@ -1063,5 +1063,116 @@ def main_v7():  # adjust no data print id theres atleast one type num plot
             print(f"An error occurred: {e}. Please try again.\n")
 
 
+
+def main_v8():  # Separate plot figure for different type_nums -> save as PNG
+    while True:
+        try:
+            logger_name = input("Enter the logger name: ").strip()
+            if not logger_name:
+                raise ValueError("Logger name cannot be empty. Please enter a valid logger name.")
+
+            timedelta_months = int(input("Enter the time delta in months: "))
+            if timedelta_months <= 0:
+                raise ValueError("Time delta must be a positive integer. Please enter a valid number of months.")
+
+            node_id = int(input("Enter the node_id: "))
+            if node_id <= 0:
+                raise ValueError("Node ID must be a positive integer. Please enter a valid node ID.")
+
+            plot_adjacent_nodes_input = input("Do you want to plot with adjacent nodes (Y/N)? ").strip().upper()
+            if plot_adjacent_nodes_input not in ['Y', 'N']:
+                raise ValueError("Invalid input. Please enter 'Y' or 'N'.")
+            plot_adjacent_nodes = plot_adjacent_nodes_input == 'Y'
+
+            show_raw_data_input = input("Do you want to show raw data (Y/N)? ").strip().upper()
+            if show_raw_data_input not in ['Y', 'N']:
+                raise ValueError("Invalid input. Please enter 'Y' or 'N'.")
+            show_raw_data = show_raw_data_input == 'Y'
+
+            end_date = datetime.now() + timedelta(days=1)
+            start_date = end_date - timedelta(days=timedelta_months * 30)
+            start_date_str = start_date.strftime('%Y-%m-%d')
+            end_date_str = end_date.strftime('%Y-%m-%d')
+
+            dyna_db = mysql.connector.connect(
+                host="192.168.150.112",
+                database="analysis_db",
+                user="pysys_local",
+                password="NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg",
+            )
+            query = f"SELECT * FROM analysis_db.tilt_{logger_name} WHERE ts BETWEEN '{start_date_str}' AND '{end_date_str}' ORDER BY ts"
+            df = pd.read_sql(query, dyna_db)
+
+            if len(logger_name) == 4:
+                df['type_num'] = 1
+
+            if len(df.columns) == 10:
+                df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt', 'is_live']
+            else:
+                df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt']
+
+            print("Number of rows fetched from database:", len(df))
+
+            type_nums = df['type_num'].unique()
+
+            nodes_to_plot = [node_id - 1, node_id, node_id + 1] if plot_adjacent_nodes else [node_id]
+            
+            for type_num in type_nums:
+                for current_node_id in nodes_to_plot:
+                    fig, axs = plt.subplots(4, 1, figsize=(12, 12), sharex='col')
+
+                    execution_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    fig.text(0.5, 0.945, f'Execution Time: {execution_time}', ha='center', fontsize=10)
+                    plt.suptitle(f'{logger_name} : node ID {current_node_id} (type_num {type_num}) - {timedelta_months}-month td', fontsize=16)
+
+                    df_group = df[df['node_id'] == current_node_id]
+                    df_type = df_group[df_group['type_num'] == type_num].copy()
+
+                    accel_label = f'{type_num}'
+                    color = 'b' if type_num in [1, 11, 32, 41, 51] else ('r' if type_num in [12, 33, 42, 52] else 'k')
+
+                    if show_raw_data:
+                        axs[0].plot(df_type['ts'], df_type['x'], label=f'raw {accel_label}', color=color, alpha=0.6)
+                        axs[1].plot(df_type['ts'], df_type['y'], label=f'raw {accel_label}', color=color, alpha=0.6)
+                        axs[2].plot(df_type['ts'], df_type['z'], label=f'raw {accel_label}', color=color, alpha=0.6)
+                        axs[3].plot(df_type['ts'], df_type['batt'], label='raw batt', alpha=0.6)
+                    else:
+                        df_type = df_type.groupby('node_id', group_keys=True).apply(apply_filters)
+                        if not df_type.empty:
+                            axs[0].plot(df_type['ts'], df_type['x'], label=accel_label, color=color)
+                            axs[1].plot(df_type['ts'], df_type['y'], label=accel_label, color=color)
+                            axs[2].plot(df_type['ts'], df_type['z'], label=accel_label, color=color)
+                            axs[3].plot(df_type['ts'], df_type['batt'], label='batt')
+
+                    y_labels = ['xval', 'yval', 'zval', 'batt']
+                    for i in range(4):
+                        axs[i].set_ylabel(y_labels[i])
+                        axs[i].legend()
+
+                    axs[3].tick_params(axis='x', rotation=45)
+                    date_format = DateFormatter('%m-%d %H:%M')
+                    axs[3].xaxis.set_major_formatter(date_format)
+
+                    fig.text(0.5, 0.01, 'timestamp', ha='center', fontsize=12)
+
+                    plt.tight_layout()
+
+                    # Save each figure as a PNG file
+                    filename = f"{logger_name}_node_{current_node_id}_type_{type_num}.png"
+                    plt.savefig(filename)
+                    print(f"Figure saved as {filename}")
+
+                    plt.close(fig)  # Close the figure after saving to avoid memory issues
+
+            dyna_db.close()
+            break
+
+        except ValueError as ve:
+            print(f"Input error: {ve}. Please try again.\n")
+        except Exception as e:
+            print(f"An error occurred: {e}. Please try again.\n")
+
+
+
 if __name__ == "__main__":
-    main_v7()
+    main_v8()
