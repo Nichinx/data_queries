@@ -190,7 +190,12 @@ def main():
     
     
     df = df_tilt.copy()
-    df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt', 'is_live']
+    # df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt', 'is_live']
+    if len(df.columns)==10:
+        df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt', 'is_live']
+    else:
+        df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt'] 
+    
     if len(logger_name) == 4:
         df['type_num'] = 1
         
