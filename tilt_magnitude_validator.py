@@ -23,12 +23,13 @@ db_config = {
     'database': 'analysis_db'
 }
 
+# Establish the database connection
 conn = mysql.connector.connect(**db_config)
 cursor = conn.cursor()
 
-# Check the number_of_segments in tsm_sensors by matching logger_name (tsm_name)
+# Check the number_of_segments and version in tsm_sensors by matching logger_name (tsm_name)
 tsm_query = f"""
-    SELECT tsm_name, number_of_segments, date_deactivated
+    SELECT tsm_name, number_of_segments, date_deactivated, version
     FROM analysis_db.tsm_sensors
     WHERE tsm_name = '{logger_name}'
 """
@@ -54,19 +55,29 @@ if len(active_tsm) == 0:
 if len(active_tsm) > 1:
     print(f"Multiple active entries found for tsm_name '{logger_name}'. Using the first match.")
 
-# Get the number_of_segments from the first active entry
+# Get the number_of_segments and version from the first active entry
 number_of_segments = active_tsm[0][1]
+version = active_tsm[0][3]
+print(f"Number of segments for '{logger_name}': {number_of_segments}, Version: {version}")
 
-print(f"Number of segments for '{logger_name}': {number_of_segments}")
+# Determine valid type_nums based on version
+if version == 2:
+    valid_type_nums = [32, 33]
+elif version == 3:
+    valid_type_nums = [11, 12]
+elif version == 4:
+    valid_type_nums = [41, 42]
+elif version == 5:
+    valid_type_nums = [51, 52]
 
 # Get the current date and calculate the timedelta of 3 months (90 days)
 now = datetime.now()
 time_delta = timedelta(days=90)
 
-# SQL query to fetch data from tilt_xxxx where node_id <= number_of_segments
+# SQL query to fetch data from tilt_xxxx where node_id <= number_of_segments and type_num matches valid_type_nums
 tilt_query = f"""
     SELECT * FROM analysis_db.tilt_{logger_name}
-    WHERE node_id <= {number_of_segments}
+    WHERE node_id <= {number_of_segments} AND type_num IN ({', '.join(map(str, valid_type_nums))})
     ORDER BY ts DESC
 """
 
@@ -114,11 +125,11 @@ if not no_data_nodes.empty:
     print("No data since the following timestamps (more than 3 months old):")
     for index, row in no_data_nodes.iterrows():
         print(f"node_id: {row['node_id']}, type_num: {row['type_num']}, last ts: {row['last_ts']}")
-        
+
 # Filter rows to only include data from the last 3 months
 df = df[df['ts'] >= (now - time_delta)]
 
-# Compute the magnitude: mag = sqrt(xval^2 + yval^2 + zval^2) / 1024 -> (version1-4)
+# Compute the magnitude: mag = sqrt(xval^2 + yval^2 + zval^2) / 1024
 df['magnitude'] = np.sqrt(df['xval']**2 + df['yval']**2 + df['zval']**2) / 1024
 
 # Filter rows where magnitude is not within 1 ± 0.08
@@ -143,6 +154,4 @@ final_result = result_df[['node_id', 'type_num', 'percentage']].drop_duplicates(
 # Output the result
 print("\nFiltered data with magnitude not within 1 ± 0.08:")
 print(final_result)
-
-
 
