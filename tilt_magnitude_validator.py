@@ -69,26 +69,44 @@ elif version == 4:
     valid_type_nums = [41, 42]
 elif version == 5:
     valid_type_nums = [51, 52]
+elif version == 1:
+    valid_type_nums = None
 
 # Get the current date and calculate the timedelta of 6 months (182.5 days)
 now = datetime.now()
 time_delta = timedelta(days=180)
 
-# SQL query to fetch data from tilt_xxxx where node_id <= number_of_segments and type_num matches valid_type_nums
+# # SQL query to fetch data from tilt_xxxx where node_id <= number_of_segments and type_num matches valid_type_nums 
+# tilt_query = f"""
+#     SELECT * FROM analysis_db.tilt_{logger_name}
+#     WHERE node_id <= {number_of_segments} 
+#     AND type_num IN ({', '.join(map(str, valid_type_nums))}) 
+#     AND ts > '2022-01-01'
+#     ORDER BY ts DESC
+# """
+
+# Start constructing the SQL query
 tilt_query = f"""
     SELECT * FROM analysis_db.tilt_{logger_name}
-    WHERE node_id <= {number_of_segments} 
-    AND type_num IN ({', '.join(map(str, valid_type_nums))}) 
-    AND ts > '2022-01-01'
-    ORDER BY ts DESC
-"""
+    
+
+""" # WHERE node_id <= {number_of_segments}    AND ts > '2022-01-01'
+
+# Append type_num condition only if valid_type_nums is not None
+if valid_type_nums is not None:
+    # tilt_query += f" AND type_num IN ({', '.join(map(str, valid_type_nums))})"
+    tilt_query += f"WHERE type_num IN ({', '.join(map(str, valid_type_nums))})"
+
+# Add ordering
+tilt_query += " ORDER BY ts DESC"
+
 
 cursor.execute(tilt_query)
 rows = cursor.fetchall()
 
-# Close the cursor and connection
-cursor.close()
-conn.close()
+# # Close the cursor and connection
+# cursor.close()
+# conn.close()
 
 # Load the data into a DataFrame
 # Get column names from cursor description
@@ -124,12 +142,65 @@ no_data_nodes = last_ts_per_node[last_ts_per_node['time_diff'] > time_delta]
 
 # Report node_id and type_num with no data in the last ___ months
 if not no_data_nodes.empty:
-    print("\nNo data since the following timestamps (more than 6 months old):")
+    print("\nNo data since the following timestamps (more than 6 months from now):")
     for index, row in no_data_nodes.iterrows():
         print(f"node_id: {row['node_id']}, type_num: {row['type_num']}, last ts: {row['last_ts']}")
 
-# Filter rows to only include data from the last ___ months
+# Filter rows to only include data from the last 6 months
 df = df[df['ts'] >= (now - time_delta)]
+
+
+
+in_use_query = f"""
+SELECT node_id, accel_number, in_use 
+FROM analysis_db.accelerometers 
+WHERE tsm_id IN (
+    SELECT tsm_id FROM analysis_db.tsm_sensors WHERE tsm_name = '{logger_name}'
+)
+"""
+cursor.execute(in_use_query)
+in_use_df = cursor.fetchall()
+
+in_use_df = pd.DataFrame(in_use_df, columns=['node_id', 'accel_number', 'in_use'])
+
+# Prepare a mapping for in_use status
+in_use_mapping = {
+    (row['node_id'], row['accel_number']): row['in_use']
+    for index, row in in_use_df.iterrows()
+}
+
+# def get_accel_number(type_num):
+#     if type_num in {1, 11, 32, 41, 51}:
+#         return 1  # accel_number 1
+#     elif type_num in {12, 33, 42, 52}:
+#         return 2  # accel_number 2
+#     return None  # If not found
+
+def get_accel_number(type_num):
+    # Convert to integer if type_num is a string that represents a number
+    if isinstance(type_num, str) and type_num.isdigit():
+        type_num = int(type_num)  # Convert to int if it's a digit string
+    elif isinstance(type_num, (int, float)):  # Check if it's an int or float
+        pass
+    else:
+        return None  # If it's neither
+
+    if type_num in {1, 11, 32, 41, 51}:
+        return 1  # accel_number 1
+    elif type_num in {12, 33, 42, 52}:
+        return 2  # accel_number 2
+
+    return None  # If not found
+
+
+
+df['accel_number'] = df['type_num'].apply(get_accel_number)  # Determine accel_number based on type_num
+df['in_use'] = df.apply(
+    lambda row: in_use_mapping.get((row['node_id'], row['accel_number']), '-'),  # Default to 0 if not found
+    axis=1
+)
+
+
 
 # Adjust accelerometer values based on type_num conditions
 def adjust_accelerometer_values(df):
@@ -210,11 +281,17 @@ percentages = percentages.reset_index(name='percentage')
 result_df = filtered_df.merge(percentages, on=['node_id', 'type_num'], how='left')
 
 # Select and return node_id, type_num, and percentage of total occurrence
-final_result = result_df[['node_id', 'type_num', 'percentage']].drop_duplicates().reset_index(drop=True)
+final_result = result_df[['node_id', 'type_num', 'percentage', 'in_use']].drop_duplicates().reset_index(drop=True).sort_values(by='node_id')
 
 # Output the result
-print("\nFiltered data with magnitude not within 1 ± 0.08:")
+print("\nFiltered data with magnitude not within 1 ± 0.08 (last 6 months):")
 print(final_result)
+
+
+
+# Close the cursor and connection
+cursor.close()
+conn.close()
 
 
 # def detect_fluctuations(df, fluctuation_threshold=2):
@@ -302,7 +379,7 @@ print(final_result)
 #         print(f"Fluctuation detected for node_id: {node_id}, type_num: {type_num}")
 
 
-def detect_fluctuations(df, fluctuation_threshold=4):
+def detect_fluctuations(df, fluctuation_threshold=2):
     # Convert the timestamp to datetime if not already
     df['ts'] = pd.to_datetime(df['ts'])
 
@@ -325,10 +402,10 @@ def detect_fluctuations(df, fluctuation_threshold=4):
         z_fluctuation = group['zval_rolling_std_30D'] > fluctuation_threshold
 
         if x_fluctuation.any() or y_fluctuation.any() or z_fluctuation.any():
-            fluctuation_detected.add((node_id, type_num))
+            in_use_status = group['in_use'].iloc[0]
+            fluctuation_detected.add((node_id, type_num, in_use_status))
 
-    return pd.DataFrame(list(fluctuation_detected), columns=['node_id', 'type_num'])
-
+    return pd.DataFrame(list(fluctuation_detected), columns=['node_id', 'type_num', 'in_use'])
 
 
 ########applying filters
@@ -352,53 +429,55 @@ def outlier_filter(df):
         return dff
         
 def range_filter_accel(df):
-    df.loc[:, 'type_num'] = df.type_num.astype(str)
+    df.loc[:, 'type_num'] = df.loc[:, 'type_num'].astype(str)
     
-    if df.type_num.str.contains('32').any() | df.type_num.str.contains('33').any():
-    ## adjust accelerometer values for valid overshoot ranges
-        df.xval[(df.xval<-2970) & (df.xval>-3072)] = df.xval[(df.xval<-2970) & (df.xval>-3072)] + 4096
-        df.yval[(df.yval<-2970) & (df.yval>-3072)] = df.yval[(df.yval<-2970) & (df.yval>-3072)] + 4096
-        df.zval[(df.zval<-2970) & (df.zval>-3072)] = df.zval[(df.zval<-2970) & (df.zval>-3072)] + 4096
+    if df['type_num'].str.contains('32').any() | df['type_num'].str.contains('33').any():
+        # Adjust accelerometer values for valid overshoot ranges
+        df.loc[(df.xval < -2970) & (df.xval > -3072), 'xval'] = df.loc[(df.xval < -2970) & (df.xval > -3072), 'xval'] + 4096
+        df.loc[(df.yval < -2970) & (df.yval > -3072), 'yval'] = df.loc[(df.yval < -2970) & (df.yval > -3072), 'yval'] + 4096
+        df.loc[(df.zval < -2970) & (df.zval > -3072), 'zval'] = df.loc[(df.zval < -2970) & (df.zval > -3072), 'zval'] + 4096
         
-        df.xval[abs(df.xval) > 1126] = np.nan
-        df.yval[abs(df.yval) > 1126] = np.nan
-        df.zval[abs(df.zval) > 1126] = np.nan
+        df.loc[abs(df.xval) > 1126, 'xval'] = np.nan
+        df.loc[abs(df.yval) > 1126, 'yval'] = np.nan
+        df.loc[abs(df.zval) > 1126, 'zval'] = np.nan
         
-    if df.type_num.str.contains('11').any() | df.type_num.str.contains('12').any():
-    ## adjust accelerometer values for valid overshoot ranges
-        df.xval[(df.xval<-2970) & (df.xval>-3072)] = df.xval[(df.xval<-2970) & (df.xval>-3072)] + 4096
-        df.yval[(df.yval<-2970) & (df.yval>-3072)] = df.yval[(df.yval<-2970) & (df.yval>-3072)] + 4096
-        df.zval[(df.zval<-2970) & (df.zval>-3072)] = df.zval[(df.zval<-2970) & (df.zval>-3072)] + 4096
+    if df['type_num'].str.contains('11').any() | df['type_num'].str.contains('12').any():
+        # Adjust accelerometer values for valid overshoot ranges
+        df.loc[(df.xval < -2970) & (df.xval > -3072), 'xval'] = df.loc[(df.xval < -2970) & (df.xval > -3072), 'xval'] + 4096
+        df.loc[(df.yval < -2970) & (df.yval > -3072), 'yval'] = df.loc[(df.yval < -2970) & (df.yval > -3072), 'yval'] + 4096
+        df.loc[(df.zval < -2970) & (df.zval > -3072), 'zval'] = df.loc[(df.zval < -2970) & (df.zval > -3072), 'zval'] + 4096
         
-        df.xval[abs(df.xval) > 1126] = np.nan
-        df.yval[abs(df.yval) > 1126] = np.nan
-        df.zval[abs(df.zval) > 1126] = np.nan
+        df.loc[abs(df.xval) > 1126, 'xval'] = np.nan
+        df.loc[abs(df.yval) > 1126, 'yval'] = np.nan
+        df.loc[abs(df.zval) > 1126, 'zval'] = np.nan
          
-    if df.type_num.str.contains('41').any() | df.type_num.str.contains('42').any():
-    ## adjust accelerometer values for valid overshoot ranges
-        df.xval[(df.xval<-2970) & (df.xval>-3072)] = df.xval[(df.xval<-2970) & (df.xval>-3072)] + 4096
-        df.yval[(df.yval<-2970) & (df.yval>-3072)] = df.yval[(df.yval<-2970) & (df.yval>-3072)] + 4096
-        df.zval[(df.zval<-2970) & (df.zval>-3072)] = df.zval[(df.zval<-2970) & (df.zval>-3072)] + 4096
+    if df['type_num'].str.contains('41').any() | df['type_num'].str.contains('42').any():
+        # Adjust accelerometer values for valid overshoot ranges
+        df.loc[(df.xval < -2970) & (df.xval > -3072), 'xval'] = df.loc[(df.xval < -2970) & (df.xval > -3072), 'xval'] + 4096
+        df.loc[(df.yval < -2970) & (df.yval > -3072), 'yval'] = df.loc[(df.yval < -2970) & (df.yval > -3072), 'yval'] + 4096
+        df.loc[(df.zval < -2970) & (df.zval > -3072), 'zval'] = df.loc[(df.zval < -2970) & (df.zval > -3072), 'zval'] + 4096
         
-        df.xval[abs(df.xval) > 1126] = np.nan
-        df.yval[abs(df.yval) > 1126] = np.nan
-        df.zval[abs(df.zval) > 1126] = np.nan
+        df.loc[abs(df.xval) > 1126, 'xval'] = np.nan
+        df.loc[abs(df.yval) > 1126, 'yval'] = np.nan
+        df.loc[abs(df.zval) > 1126, 'zval'] = np.nan
         
-    if df.type_num.str.contains('51').any() | df.type_num.str.contains('52').any():
-    ## adjust accelerometer values for valid overshoot ranges
-        df.loc[df.xval<-32768, 'xval'] = df.loc[df.xval<-32768, 'xval'] + 65536
-        df.loc[df.xval<-32768, 'yval'] = df.loc[df.xval<-32768, 'yval'] + 65536
-        df.loc[df.xval<-32768, 'zval'] = df.loc[df.xval<-32768, 'zval'] + 65536
+    if df['type_num'].str.contains('51').any() | df['type_num'].str.contains('52').any():
+        # Adjust accelerometer values for valid overshoot ranges
+        df.loc[df.xval < -32768, 'xval'] = df.loc[df.xval < -32768, 'xval'] + 65536
+        df.loc[df.yval < -32768, 'yval'] = df.loc[df.yval < -32768, 'yval'] + 65536
+        df.loc[df.zval < -32768, 'zval'] = df.loc[df.zval < -32768, 'zval'] + 65536
         
         df.loc[abs(df.xval) > 13158, 'xval'] = np.nan
-        df.loc[abs(df.xval) > 13158, 'yval'] = np.nan
-        df.loc[abs(df.xval) > 13158, 'zval'] = np.nan
+        df.loc[abs(df.yval) > 13158, 'yval'] = np.nan
+        df.loc[abs(df.zval) > 13158, 'zval'] = np.nan
     
     return df.loc[df.xval.notnull(), :]
 
+
 def orthogonal_filter(df):
     lim = .08
-    df.type_num = df.type_num.astype(str)
+    df = df.copy()
+    df.loc[:, 'type_num'] = df['type_num'].astype(str)
     
     if df.type_num.str.contains('51').any() | df.type_num.str.contains('52').any() :
         div = 13158
@@ -417,19 +496,19 @@ def resample_df(df):
     return df
     
 def apply_filters(dfl, orthof=True, rangef=True, outlierf=True):
-
+    
     if dfl.empty:
-        return dfl[['ts','node_id','type_num','xval','yval','zval']]  
+        return dfl[['ts','node_id','type_num','xval','yval','zval', 'in_use']]  
   
     if rangef:
         dfl = range_filter_accel(dfl)
         if dfl.empty:
-            return dfl[['ts','node_id','type_num','xval','yval','zval']]
+            return dfl[['ts','node_id','type_num','xval','yval','zval', 'in_use']]
 
     if orthof: 
         dfl = orthogonal_filter(dfl)
         if dfl.empty:
-            return dfl[['ts','node_id','type_num','xval','yval','zval']]
+            return dfl[['ts','node_id','type_num','xval','yval','zval', 'in_use']]
             
     if outlierf:
         dfl = dfl.groupby(['node_id'])
@@ -437,18 +516,29 @@ def apply_filters(dfl, orthof=True, rangef=True, outlierf=True):
         dfl = dfl.set_index('ts').groupby('node_id').apply(outlier_filter)
         dfl = dfl.reset_index(level = ['ts'])
         if dfl.empty:
-            return dfl[['ts','node_id','type_num','xval','yval','zval']]
+            return dfl[['ts','node_id','type_num','xval','yval','zval', 'in_use']]
     
     dfl = dfl.reset_index(drop=True)     
     try:
-        dfl = dfl[['ts','node_id','type_num','xval','yval','zval','batt']]
+        dfl = dfl[['ts','node_id','type_num','xval','yval','zval','batt', 'in_use']]
     except KeyError:
-        dfl = dfl[['ts','node_id','type_num','xval','yval','zval']]
+        dfl = dfl[['ts','node_id','type_num','xval','yval','zval', 'in_use']]
     return dfl
 
 
 filtered_df = apply_filters(df)
-# detect_fluctuations(filtered_df, fluctuation_threshold=2)
-fluctuation_results = detect_fluctuations(filtered_df)
-print("\nNode IDs and Type Numbers where fluctuations were observed:")
+filtered_df['node_id'] = filtered_df['node_id'].astype('int64')  # Convert node_id to int64
+filtered_df['type_num'] = filtered_df['type_num'].astype(df['type_num'].dtype)
+filtered_df['in_use'] = filtered_df['in_use'].astype(df['in_use'].dtype)  # Ensure same dtype for 'in_use'
+
+
+filtered_df['accel_number'] = filtered_df['type_num'].apply(get_accel_number)
+filtered_df['in_use'] = filtered_df.apply(
+    lambda row: in_use_mapping.get(((row['node_id']), row['accel_number']), '-'),
+    axis=1
+)
+
+
+fluctuation_results = detect_fluctuations(filtered_df).sort_values(by='node_id')
+print("\nNode IDs and type_nums where fluctuations were observed:")
 print(fluctuation_results)
