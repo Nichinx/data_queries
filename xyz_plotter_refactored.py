@@ -944,8 +944,8 @@ def main_v7():  # adjust no data print id theres atleast one type num plot
             dyna_db = mysql.connector.connect(
                 host="192.168.150.112",
                 database="analysis_db",
-                user="pysys_local",
-                password="NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg",
+                user="hardwareinfra",
+                password="veug3r4MTKfsuk5H4rdw4r3",
             )
             query = f"SELECT * FROM analysis_db.tilt_{logger_name} WHERE ts BETWEEN '{start_date_str}' AND '{end_date_str}' ORDER BY ts"
             df = pd.read_sql(query, dyna_db)
@@ -1109,8 +1109,8 @@ def main_v8():  # Separate plot figure for different type_nums -> save as PNG
             dyna_db = mysql.connector.connect(
                 host="192.168.150.112",
                 database="analysis_db",
-                user="pysys_local",
-                password="NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg",
+                user="hardwareinfra",
+                password="veug3r4MTKfsuk5H4rdw4r3",
             )
             query = f"SELECT * FROM analysis_db.tilt_{logger_name} WHERE ts BETWEEN '{start_date_str}' AND '{end_date_str}' ORDER BY ts"
             df = pd.read_sql(query, dyna_db)
@@ -1202,7 +1202,6 @@ def main_v8():  # Separate plot figure for different type_nums -> save as PNG
 
 
 
-
 def main_v9():  # Separate plot figure for different type_nums -> save as PNG + LOOP
     while True:
         try:
@@ -1213,7 +1212,9 @@ def main_v9():  # Separate plot figure for different type_nums -> save as PNG + 
             # timedelta_months = int(input("Enter the time delta in months: "))
             # if timedelta_months <= 0:
             #     raise ValueError("Time delta must be a positive integer. Please enter a valid number of months.")
-            timedelta_months = 6        
+            # timedelta_months = 6
+            years_to_subtract = 8
+            days_in_year = 365
             
             node_id = int(input("Enter the node_id: "))
             if node_id <= 0:
@@ -1226,17 +1227,34 @@ def main_v9():  # Separate plot figure for different type_nums -> save as PNG + 
             # show_raw_data = True
             
             end_date = datetime.now() + timedelta(days=1)
-            start_date = end_date - timedelta(days=timedelta_months * 30)
+            # start_date = end_date - timedelta(days=timedelta_months * 30)
+            start_date = end_date - timedelta(days=years_to_subtract * days_in_year)
             start_date_str = start_date.strftime('%Y-%m-%d')
             end_date_str = end_date.strftime('%Y-%m-%d')
-
+            
+            # Fetch valid type_nums and number_of_segments for logger_name
+            valid_type_nums = fetch_valid_type_nums(logger_name)
+           
             dyna_db = mysql.connector.connect(
                 host="192.168.150.112",
                 database="analysis_db",
-                user="pysys_local",
-                password="NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg",
+                user="hardwareinfra",
+                password="veug3r4MTKfsuk5H4rdw4r3"
             )
-            query = f"SELECT * FROM analysis_db.tilt_{logger_name} WHERE ts BETWEEN '{start_date_str}' AND '{end_date_str}' ORDER BY ts"
+            
+            if valid_type_nums is None:
+                query = f"""
+                    SELECT * FROM analysis_db.tilt_{logger_name}
+                    WHERE ts BETWEEN '{start_date_str}' AND '{end_date_str}'
+                    ORDER BY ts
+                """
+            else:
+                query = f"""
+                    SELECT * FROM analysis_db.tilt_{logger_name}
+                    WHERE ts BETWEEN '{start_date_str}' AND '{end_date_str}'
+                    AND type_num IN ({', '.join(map(str, valid_type_nums))})
+                    ORDER BY ts
+                """
             df = pd.read_sql(query, dyna_db)
 
             if len(logger_name) == 4:
@@ -1246,7 +1264,6 @@ def main_v9():  # Separate plot figure for different type_nums -> save as PNG + 
                 df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt', 'is_live']
             else:
                 df.columns = ['data_id', 'ts_written', 'ts', 'node_id', 'type_num', 'x', 'y', 'z', 'batt']
-
             print("Number of rows fetched from database:", len(df))
 
             type_nums = df['type_num'].unique()
@@ -1257,7 +1274,7 @@ def main_v9():  # Separate plot figure for different type_nums -> save as PNG + 
 
                     execution_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     fig.text(0.5, 0.95, f'Execution Time: {execution_time}', ha='center', fontsize=10)
-                    plt.suptitle(f'{logger_name} : node ID {current_node_id} (type_num {type_num}) - {timedelta_months}-month td', fontsize=16)
+                    plt.suptitle(f'{logger_name} : node ID {current_node_id} (type_num {type_num}) - {years_to_subtract}-years td', fontsize=16)
                     
                     df_group = df[df['node_id'] == current_node_id]
                     df_type = df_group[df_group['type_num'] == type_num].copy()
@@ -1301,7 +1318,7 @@ def main_v9():  # Separate plot figure for different type_nums -> save as PNG + 
                         axs[i].legend()
 
                     axs[3].tick_params(axis='x', rotation=45)
-                    date_format = DateFormatter('%m-%d %H:%M')
+                    date_format = DateFormatter('%Y-%m')
                     axs[3].xaxis.set_major_formatter(date_format)
 
                     fig.text(0.5, 0.01, 'timestamp', ha='center', fontsize=12)
@@ -1328,7 +1345,56 @@ def main_v9():  # Separate plot figure for different type_nums -> save as PNG + 
             print(f"An error occurred: {e}. Please try again.\n")
 
 
+def fetch_valid_type_nums(logger_name):
+    # Database connection for fetching tsm_sensors info
+    dyna_db = mysql.connector.connect(
+        host="192.168.150.112",
+        database="analysis_db",
+        user="hardwareinfra",
+        password="veug3r4MTKfsuk5H4rdw4r3",
+    )
+    cursor = dyna_db.cursor()
+
+    # Check the number_of_segments and version in tsm_sensors by matching logger_name (tsm_name)
+    tsm_query = f"""
+        SELECT tsm_name, number_of_segments, date_deactivated, version
+        FROM analysis_db.tsm_sensors
+        WHERE tsm_name = '{logger_name}'
+    """
+    cursor.execute(tsm_query)
+    tsm_results = cursor.fetchall()
+
+    if len(tsm_results) == 0:
+        print(f"No entry found for tsm_name '{logger_name}' in tsm_sensors.")
+        dyna_db.close()
+        return None, None
+
+    # Filter for active entries where date_deactivated is NULL
+    active_tsm = [result for result in tsm_results if result[2] is None]
+
+    if len(active_tsm) == 0:
+        print(f"No active entry found for tsm_name '{logger_name}' in tsm_sensors.")
+        dyna_db.close()
+        return None, None
+
+    version = active_tsm[0][3]
+    print(f"'{logger_name}', Version: {version}")
+
+    # Determine valid type_nums based on version
+    if version == 2:
+        valid_type_nums = [32, 33]
+    elif version == 3:
+        valid_type_nums = [11, 12]
+    elif version == 4:
+        valid_type_nums = [41, 42]
+    elif version == 5:
+        valid_type_nums = [51, 52]
+    elif version == 1:
+        valid_type_nums = None
+
+    dyna_db.close()
+    return valid_type_nums
 
 
 if __name__ == "__main__":
-    main_v9()
+    main_v7()
