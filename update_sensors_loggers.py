@@ -12,6 +12,7 @@ from mysql.connector import Error
 from datetime import datetime
 import time
 import sys
+import os
 
 
 def get_valid_logger_name(connection, cursor):
@@ -204,8 +205,8 @@ def create_new_logger_entry(connection, cursor, logger_name, schema="analysis_db
             print("Error: Invalid date format.")
             continue
         
-        latitude = input("Enter the latitude: ")
-        longitude = input("Enter the longitude: ")
+        latitude = input("Enter the latitude (in decimal degrees): ")
+        longitude = input("Enter the longitude (in decimal degrees): ")
         try:
             latitude = float(latitude)
             longitude = float(longitude)
@@ -258,7 +259,6 @@ def create_new_logger_entry(connection, cursor, logger_name, schema="analysis_db
         if logger_type not in ['1', '2']:
             print("Error: Invalid logger type.")
             continue
-
         logger_type_map = {'1': 'router', '2': 'gateway'}
 
         model_query = """
@@ -284,11 +284,10 @@ def create_new_logger_entry(connection, cursor, logger_name, schema="analysis_db
         cursor.execute("SELECT logger_id FROM commons_db.loggers WHERE logger_name = %s", (logger_name,))
         logger_id = cursor.fetchone()[0]
         if logger_type in ['2']:
-            # Check for duplicate SIM number
             sim_num = input("Enter the SIM number: ")
             if len(sim_num) != 12:
                 print("Error: The SIM number exceeds the allowed length.")
-                connection.rollback()  # Rollback changes if SIM number is invalid
+                connection.rollback()  
                 return
 
             gsm_id = 7      
@@ -298,7 +297,6 @@ def create_new_logger_entry(connection, cursor, logger_name, schema="analysis_db
                 connection.rollback()
                 return
     
-            # Get the last mobile_id from the logger_mobile table
             cursor.execute("SELECT COALESCE(MAX(mobile_id), 0) FROM comms_db.logger_mobile")
             last_mobile_id = cursor.fetchone()[0]
             new_mobile_id = last_mobile_id + 1
@@ -371,7 +369,7 @@ def update_logger_mobile_number(connection):
     print("2. Logger with no GSM before: router to ARQ mode")
     print("3. Remove logger GSM: ARQ mode to router or decommission")
     print("")
-    case = int(input("Enter the case number (1, 2, or 3): "))
+    case = input("Enter the case number (1, 2, or 3). Enter x to exit: ")
     print("")
 
     try:
@@ -390,7 +388,6 @@ def update_logger_mobile_number(connection):
                 return
             gsm_id = 7
 
-            # Check for duplicate SIM number
             sim_check_query = "SELECT 1 FROM comms_db.logger_mobile WHERE sim_num = %s"
             cursor.execute(sim_check_query, (sim_num,))
             if cursor.fetchone():
@@ -417,7 +414,7 @@ def update_logger_mobile_number(connection):
 
         elif case == 2:
             if not result or result[3] is None:               
-                sim_num = input("Enter the SIM number: ")
+                sim_num = input("Enter the SIM number (63XXXXXXXXXX): ")
                 if len(sim_num) != 12:
                     print("Error: SIM number must be exactly 12 digits.")
                     return
@@ -543,6 +540,10 @@ def update_logger_mobile_number(connection):
             else:
                 print("No changes made.")
                 return
+            
+        elif case == "x":
+            print("Exiting.")
+            cursor.close()
 
         else:
             print("Error: Invalid case number selected.")
@@ -550,22 +551,29 @@ def update_logger_mobile_number(connection):
 
         connection.commit()
         cursor.close()
+        
+    except ValueError:
+        print("Error: Please enter a valid integer for the case number.")
+        return
 
     except Exception as e:
         print(f"An error occurred: {e}")
         connection.rollback()
-
+        
 
 def get_db_config(config_file):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_file = os.path.join(script_dir, "config.cnf")
+    
     config = configparser.ConfigParser()
     config.read(config_file)
-    config = {
-        "host": config["local"]["host"],
-        "database": config["local"]["database"],
-        "user": config["local"]["user"],
-        "password": config["local"]["password"],
+    db_config = {
+        "host": config["db"]["host"],
+        "database": config["db"]["database"],
+        "user": config["db"]["user"],
+        "password": config["db"]["password"],
     }
-    return config
+    return db_config
 
 
 def main():
@@ -581,9 +589,10 @@ def main():
         print("Error while connecting to MySQL", e)
     
     finally:
-        if connection.is_connected():
+        if connection.is_connected():   
             connection.close()
             print("MySQL connection is closed.")
+
 
 
 if __name__ == "__main__":
